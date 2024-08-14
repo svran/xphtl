@@ -1,0 +1,7 @@
+<resources>
+    <string name="app_name">怎么活啊-插件</string>
+    <string-array name="module_scope">
+        <item>com.wm.dmall</item>
+        <item>cn.yonghui.hyd</item>
+    </string-array>
+</resources>
