@@ -1,6 +1,7 @@
 package air.svran.xp.htlhooker;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
@@ -8,7 +9,6 @@ import android.util.TypedValue;
 import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
-import android.widget.Toast;
 
 import java.lang.reflect.Method;
 
@@ -60,9 +60,7 @@ public class Yh {
                 XposedBridge.log("Svran: 进入永辉hook");
                 viewHolder = XposedHelpers.findClass("androidx.recyclerview.widget.RecyclerView$e0", classLoader);
                 adapter = XposedHelpers.findClass("androidx.recyclerview.widget.RecyclerView$h", classLoader);
-//                hookRvSetAdapter(classLoader);
-//                hookRvCreateVh(classLoader);
-//                hookOnBindViewHolder(classLoader);
+                hookOnBindViewHolder(classLoader);
                 hookRvVhOnBind(classLoader);
             }
         });
@@ -79,25 +77,86 @@ public class Yh {
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 super.afterHookedMethod(param);
                 Object vh = param.args[0];
-                int itemViewType = 0;
-                itemViewType = (int) XposedHelpers.callMethod(vh, "getItemViewType");
-                switch (vh.getClass().getName()) {
-                    case "com.dmall.cms.adapter.NavigationRecyclerViewAdapter$ItemViewHolder":
-                        break;
-                    case "com.dmall.trade.dto.cart.viewbinder.CartCommonWareViewBinder$CartCommonWareViewHolder":
-                        break;
-                    case "com.dmall.framework.views.recyclerview.ItemViewHolder":
-                        break;
-                    case "com.dmall.order.orderdetail.OrderWaresView$MyViewHolder":
-                        break;
-                    case "com.dmall.trade.dto.cart.viewbinder.CartRecommendViewBinder$CartRecommendViewHolder":
-                        break;
-                    default:
-//                        XposedBridge.log("Svran: 绑定bindViewHolder(" + itemViewType + "):" + param.args[0].getClass().getName());
-                        break;
+                View itemView = (View) XposedHelpers.getObjectField(vh, "itemView");
+//                printStackTrace();
+                if (itemView instanceof ViewGroup) {
+                    ViewGroup vg = (ViewGroup) itemView;
+                    longClick(vg);
                 }
             }
         });
+    }
+
+    private void setOnLongClickAllChildView(ViewGroup viewGroup, boolean setClickListener) {
+        if (viewGroup == null) return;
+        StringBuilder builder = new StringBuilder();
+        int count = viewGroup.getChildCount();
+//        clearAllClickListener(viewGroup);
+//        clearAllLongClickListener(viewGroup);
+        for (int i = 0; i < count; i++) {
+            View child = viewGroup.getChildAt(i);
+            if (child != null) builder.append(child.getClass().getName()).append("\n\n");
+            if (child instanceof ViewGroup) {
+                ViewGroup vgChild = (ViewGroup) child;
+//                setOnLongClickAllChildView(vgChild, setClickListener);
+                longClick(child);
+            } else if (child != null) {
+                if (setClickListener) oneClick(child);
+                else child.setOnClickListener(null);
+            }
+        }
+
+        AlertDialog.Builder builder1 = new AlertDialog.Builder(viewGroup.getContext());
+        builder1.setTitle("插件: 怎么活啊 - 永辉 - 调试");
+        builder1.setMessage(builder.toString());
+        builder1.setNegativeButton("确定", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                printStackTrace();
+                dialog.dismiss();
+            }
+        });
+        builder1.show();
+    }
+
+    private void clearAllLongClickListener(ViewGroup group) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View view = group.getChildAt(i);
+            if (view instanceof ViewGroup) {
+                ViewGroup vg = (ViewGroup) view;
+                clearAllLongClickListener(vg);
+            } else {
+                view.setOnLongClickListener(null);
+            }
+        }
+    }
+
+    private void clearAllClickListener(ViewGroup group) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View view = group.getChildAt(i);
+            if (view instanceof ViewGroup) {
+                ViewGroup vg = (ViewGroup) view;
+                clearAllClickListener(vg);
+            } else {
+//                view.setOnClickListener(null);
+                oneClick(view);
+            }
+        }
+    }
+
+    // 通过id 获取id名称
+    private String getViewIdName(View view) {
+        return view.getContext().getResources().getResourceEntryName(view.getId());
+    }
+
+    // 输出堆栈信息
+    private void printStackTrace() {
+        try {
+//            new Exception().printStackTrace();
+            throw new Exception("堆栈信息 Svran Test");
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
     }
 
     private void hookRvVhOnBind(ClassLoader classLoader) {
@@ -110,7 +169,7 @@ public class Yh {
             @Override
             protected void afterHookedMethod(MethodHookParam param) throws Throwable {
                 super.afterHookedMethod(param);
-                XposedBridge.log("Svran: 绑定bindViewHolder:" + param.args[0].getClass().getName());
+//                XposedBridge.log("Svran: 绑定bindViewHolder:" + param.args[0].getClass().getName());
                 try {
                     Method method = XposedHelpers.findMethodBestMatch(param.args[0].getClass(), "getViewContainer");
                     if (method != null) {
@@ -126,7 +185,7 @@ public class Yh {
                 } catch (NoSuchMethodError e) {
 //                    XposedBridge.log("Svran: ma.a => " + e.getMessage());
                 }
-                try {
+                try { // 这里应该是购物车的
                     Method method = XposedHelpers.findMethodBestMatch(param.args[0].getClass(), "a0");
                     if (method != null) {
                         try {
@@ -139,10 +198,224 @@ public class Yh {
                         }
                     }
                 } catch (NoSuchMethodError e) {
-//                    XposedBridge.log("Svran: hc.o3 => " + e.getMessage());
+//                    XposedBridge.log("Svran: ic.p3 => " + e.getMessage());
                 }
             }
         });
+    }
+
+    private void hookProductCardOrItem(Object viewContainer) {
+        View image = null;
+        TextView title;
+        TextView price;
+//        XposedBridge.log("Svran: 控件: " + viewContainer.getClass().getName());
+        switch (viewContainer.getClass().getName()) {
+//            case "t5.f":
+//                break;
+//            case "na.a":
+//                image = (View) XposedHelpers.callMethod(viewContainer, "p");
+//                title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
+//                price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
+//                break;
+            case "ma.a":
+                image = (View) XposedHelpers.callMethod(viewContainer, "p");
+                title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
+                price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
+                break;
+            case "hc.o3": // 购物车的 之前版本
+            case "ic.p3": // 购物车的
+                try {
+                    image = (View) XposedHelpers.getObjectField(viewContainer, "I");
+                } catch (Exception e) {
+                }
+                if (image == null) try {
+                    image = (View) XposedHelpers.getObjectField(viewContainer, "K");
+                } catch (Exception e) {
+                }
+                title = (TextView) XposedHelpers.getObjectField(viewContainer, "l1");
+                price = (TextView) XposedHelpers.getObjectField(viewContainer, "l");
+                break;
+            default:
+                image = (View) XposedHelpers.callMethod(viewContainer, "p");
+                title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
+                price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
+        }
+
+        if (image != null && title != null && price != null) {
+            image.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    AlertDialog.Builder builder = new AlertDialog.Builder(v.getContext());
+                    builder.setTitle("插件: 怎么活啊 - 永辉");
+                    builder.setItems(new CharSequence[]{title.getText() + " , " + price.getText(), "1. 添加到临时商品", "2. 添加商品", "3. 查询 - 比价", "4. 查询 - 比价 - 关键字"}, new DialogInterface.OnClickListener() {
+                        @Override
+                        public void onClick(DialogInterface dialog, int which) {
+                            Intent intent = new Intent();
+                            switch (which) {
+                                case 1:
+                                    intent.setAction(Intent.ACTION_VIEW);
+                                    intent.setData(Uri.parse("htl://svran.apps/tmp?name=" + title.getText() + "&price=" + price.getText() + "&mark=来自插件添加"));
+                                    v.getContext().startActivity(intent);
+                                    break;
+                                case 2:
+                                    intent.setAction(Intent.ACTION_VIEW);
+                                    intent.setData(Uri.parse("htl://svran.apps/add?name=" + title.getText() + "&price=" + price.getText() + "&mark=来自插件添加"));
+                                    v.getContext().startActivity(intent);
+                                    break;
+                                case 3:
+                                    intent.setAction(Intent.ACTION_VIEW);
+                                    intent.setData(Uri.parse("htl://svran.apps/compare?name=" + title.getText() + "&price=" + price.getText() + "&search=" + getSelectedTextViewText(title)));
+                                    v.getContext().startActivity(intent);
+                                    break;
+                                case 4:
+                                    AlertDialog.Builder inputBuilder = new AlertDialog.Builder(v.getContext());
+                                    inputBuilder.setTitle("双击选择匹配关键字");
+                                    TextView editText = new TextView(v.getContext());
+                                    editText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
+                                    editText.setTextIsSelectable(true);
+//                                    EditText editText = new EditText(v.getContext());
+                                    editText.setText(title.getText());
+                                    inputBuilder.setView(editText);
+                                    inputBuilder.setPositiveButton("确定", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+                                            intent.setAction(Intent.ACTION_VIEW);
+                                            intent.setData(Uri.parse("htl://svran.apps/compare?name=" + title.getText() + "&price=" + price.getText() + "&search=" + getSelectedTextViewText(editText)));
+                                            v.getContext().startActivity(intent);
+                                        }
+                                    });
+                                    inputBuilder.setNegativeButton("取消", new DialogInterface.OnClickListener() {
+                                        @Override
+                                        public void onClick(DialogInterface dialog, int which) {
+                                        }
+                                    });
+                                    inputBuilder.show();
+                                    break;
+                                default:
+                            }
+                        }
+                    });
+                    builder.show();
+                }
+            });
+            longClick(image);
+        }
+    }
+
+    private void longClick(View view) {
+        view.setOnLongClickListener(new View.OnLongClickListener() {
+            @Override
+            public boolean onLongClick(View v) {
+                AlertDialog.Builder builder = new AlertDialog.Builder(v.getContext());
+                builder.setTitle("插件: 怎么活啊 - 永辉 - 调试");
+                builder.setItems(new CharSequence[]{"获取父控件所有控件", "给父控件下所有子控件设置点击事件"}, new DialogInterface.OnClickListener() {
+                    @Override
+                    public void onClick(DialogInterface dialog, int which) {
+                        if (which == 0) {
+//                            setOnLongClickAllChildView()
+                            setOnLongClickAllChildView((ViewGroup) v.getParent(), false);
+                        } else if (which == 1) {
+//                            findAndShowAllViews
+                            clearAllClickListener((ViewGroup) v.getParent());
+                            setOnLongClickAllChildView((ViewGroup) v.getParent(), true);
+                        }
+                    }
+                });
+                builder.show();
+                return true;
+            }
+        });
+    }
+
+    private void oneClick(View view) {
+        view.setOnClickListener(new View.OnClickListener() {
+            @Override
+            public void onClick(View v) {
+                dialogShowInfo(v.getContext(), "one点击到了: " + v.getClass().getName() + "\n\nID: " + getViewIdName(v));
+            }
+        });
+    }
+
+    private String getSelectedTextViewText(TextView textView) {
+        if (textView == null) {
+            return "";
+        } else {
+            CharSequence text = textView.getText();
+            if (textView.getSelectionStart() == textView.getSelectionEnd()) {
+                return text.toString();
+            } else {
+                CharSequence selected = text.subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
+                return selected.toString();
+            }
+        }
+    }
+
+    private void findViewMethod(Object viewContainer, String name) {
+        View l = null;
+        try {
+            l = (View) XposedHelpers.callMethod(viewContainer, name);
+        } catch (Exception e) {
+            XposedBridge.log("Svran: " + name + " 错误 =>" + e.getMessage());
+        }
+        if (l != null) {
+            XposedBridge.log("Svran: 单项Method: （" + name + "） -> " + l);
+            l.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    dialogShowInfo(v.getContext(), "长按到了" + name + "\n\nID: " + getViewIdName(v));
+                    return true;
+                }
+            });
+            l.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    dialogShowInfo(v.getContext(), "点击到了" + name + "\n\nID: " + getViewIdName(v));
+                }
+            });
+        }
+    }
+
+    private void dialogShowInfo(Context context, String message) {
+        XposedBridge.log("SvranDialogShowInfo: " + message);
+//        Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle("插件: 怎么活啊 - 永辉 - 调试");
+        builder.setMessage(message);
+        builder.setNegativeButton("确定", new DialogInterface.OnClickListener() {
+            @Override
+            public void onClick(DialogInterface dialog, int which) {
+                printStackTrace();
+                dialog.dismiss();
+            }
+        });
+        builder.show();
+    }
+
+    private void findViewField(Object viewContainer, String name) {
+        View l = null;
+        try {
+            l = (View) XposedHelpers.getObjectField(viewContainer, name);
+        } catch (NoSuchMethodError | ClassCastException | NoSuchFieldError e) {
+            XposedBridge.log("Svran: " + name + " 错误 =>" + e.getMessage());
+        }
+        if (l != null) {
+            XposedBridge.log("Svran: 单项Field: （" + name + "） -> " + l);
+            l.setOnLongClickListener(new View.OnLongClickListener() {
+                @Override
+                public boolean onLongClick(View v) {
+                    XposedBridge.log("Svran: 长按到了 " + name + "\n\nID: " + getViewIdName(v));
+                    dialogShowInfo(v.getContext(), "长按到了" + name + "\n\nID: " + getViewIdName(v));
+                    return true;
+                }
+            });
+            l.setOnClickListener(new View.OnClickListener() {
+                @Override
+                public void onClick(View v) {
+                    XposedBridge.log("Svran: 点击到了 " + name + "\n\nID: " + getViewIdName(v));
+                    dialogShowInfo(v.getContext(), "点击到了" + name + "\n\nID: " + getViewIdName(v));
+                }
+            });
+        }
     }
 
     private void hookTestA0(Object a0) {
@@ -261,252 +534,6 @@ public class Yh {
         findViewMethod(viewContainer, "x");
 //        findViewMethod(viewContainer, "y"); // 折券
 //        findViewMethod(viewContainer, "z"); // 商品 标题 土豆 xxg
-    }
-
-//    private void hookRvCreateVh(ClassLoader classLoader) {
-//        XposedHelpers.findAndHookMethod(viewHolder, "createViewHolder", android.view.ViewGroup.class, int.class, new XC_MethodHook() {
-//            @Override
-//            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-//                super.beforeHookedMethod(param);
-//            }
-//
-//            @Override
-//            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-//                super.afterHookedMethod(param);
-//                XposedBridge.log("Svran: 创建createViewHolder:" + param.thisObject.getClass().getName());
-//            }
-//        });
-//    }
-//
-//    private void hookRvSetAdapter(ClassLoader classLoader) {
-//        XposedHelpers.findAndHookMethod("androidx.recyclerview.widget.RecyclerView", classLoader, "setAdapter", viewHolder, new XC_MethodHook() {
-//            @Override
-//            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-//                super.beforeHookedMethod(param);
-//            }
-//
-//            @Override
-//            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-//                super.afterHookedMethod(param);
-//                if (param.args[0] != null)
-//                    XposedBridge.log("Svran: 设置setAdapter:" + param.args[0].getClass().getName());
-//            }
-//        });
-//    }
-
-    private void hookProductCardOrItem(Object viewContainer) {
-        View image = null;
-        TextView title;
-        TextView price;
-        switch (viewContainer.getClass().getName()) {
-            case "ma.a":
-                image = (View) XposedHelpers.callMethod(viewContainer, "p");
-                title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
-                price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
-                break;
-            case "hc.o3":
-                try {
-                    image = (View) XposedHelpers.getObjectField(viewContainer, "I");
-                } catch (Exception e) {
-                }
-                if (image == null) try {
-                    image = (View) XposedHelpers.getObjectField(viewContainer, "K");
-                } catch (Exception e) {
-                }
-                title = (TextView) XposedHelpers.getObjectField(viewContainer, "l1");
-                price = (TextView) XposedHelpers.getObjectField(viewContainer, "l");
-                break;
-            default:
-                XposedBridge.log("Svran: 控件: " + viewContainer.getClass().getName());
-                image = (View) XposedHelpers.callMethod(viewContainer, "p");
-                title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
-                price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
-        }
-
-        if (image != null && title != null && price != null) {
-            image.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    AlertDialog.Builder builder = new AlertDialog.Builder(v.getContext());
-                    builder.setTitle("插件: 怎么活啊 - 永辉");
-                    builder.setItems(new CharSequence[]{title.getText() + " , " + price.getText(), "1. 添加到临时商品", "2. 添加商品", "3. 查询 - 比价", "4. 查询 - 比价 - 关键字"}, new DialogInterface.OnClickListener() {
-                        @Override
-                        public void onClick(DialogInterface dialog, int which) {
-                            Intent intent = new Intent();
-                            switch (which) {
-                                case 1:
-                                    intent.setAction(Intent.ACTION_VIEW);
-                                    intent.setData(Uri.parse("htl://svran.apps/tmp?name=" + title.getText() + "&price=" + price.getText() + "&mark=来自插件添加"));
-                                    v.getContext().startActivity(intent);
-                                    break;
-                                case 2:
-                                    intent.setAction(Intent.ACTION_VIEW);
-                                    intent.setData(Uri.parse("htl://svran.apps/add?name=" + title.getText() + "&price=" + price.getText() + "&mark=来自插件添加"));
-                                    v.getContext().startActivity(intent);
-                                    break;
-                                case 3:
-                                    intent.setAction(Intent.ACTION_VIEW);
-                                    intent.setData(Uri.parse("htl://svran.apps/compare?name=" + title.getText() + "&price=" + price.getText() + "&search=" + getSelectedTextViewText(title)));
-                                    v.getContext().startActivity(intent);
-                                    break;
-                                case 4:
-                                    AlertDialog.Builder inputBuilder = new AlertDialog.Builder(v.getContext());
-                                    inputBuilder.setTitle("双击选择匹配关键字");
-                                    TextView editText = new TextView(v.getContext());
-                                    editText.setTextSize(TypedValue.COMPLEX_UNIT_SP, 18);
-                                    editText.setTextIsSelectable(true);
-//                                    EditText editText = new EditText(v.getContext());
-                                    editText.setText(title.getText());
-                                    inputBuilder.setView(editText);
-                                    inputBuilder.setPositiveButton("确定", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface dialog, int which) {
-                                            intent.setAction(Intent.ACTION_VIEW);
-                                            intent.setData(Uri.parse("htl://svran.apps/compare?name=" + title.getText() + "&price=" + price.getText() + "&search=" + getSelectedTextViewText(editText)));
-                                            v.getContext().startActivity(intent);
-                                        }
-                                    });
-                                    inputBuilder.setNegativeButton("取消", new DialogInterface.OnClickListener() {
-                                        @Override
-                                        public void onClick(DialogInterface dialog, int which) {
-                                        }
-                                    });
-                                    inputBuilder.show();
-                                    break;
-                                default:
-                            }
-                        }
-                    });
-                    builder.show();
-                }
-            });
-            longClick(image);
-        }
-    }
-
-    private void longClick(View view) {
-        view.setOnLongClickListener(new View.OnLongClickListener() {
-            @Override
-            public boolean onLongClick(View v) {
-                AlertDialog.Builder builder = new AlertDialog.Builder(v.getContext());
-                builder.setTitle("插件: 怎么活啊 - 永辉 - 调试");
-                builder.setItems(new CharSequence[]{"获取父控件所有控件", "给父控件下所有子控件设置点击事件"}, new DialogInterface.OnClickListener() {
-                    @Override
-                    public void onClick(DialogInterface dialog, int which) {
-                        if (which == 0) {
-                            findAndShowAllViews((ViewGroup) v.getParent(), false);
-                        } else if (which == 1) {
-                            findAndShowAllViews((ViewGroup) v.getParent(), true);
-                        }
-                    }
-                });
-                builder.show();
-                return true;
-            }
-        });
-    }
-
-    private void oneClick(View view) {
-        view.setOnClickListener(new View.OnClickListener() {
-            @Override
-            public void onClick(View v) {
-                Toast.makeText(v.getContext(), "one点击到了: " + v.getClass().getName(), Toast.LENGTH_SHORT).show();
-            }
-        });
-    }
-
-    // 获取父控件所有控件, Dialog输出
-    private void findAndShowAllViews(ViewGroup viewGroup, boolean setClickListener) {
-        if (viewGroup == null) {
-            return;
-        }
-        StringBuilder builder = new StringBuilder();
-        for (int i = 0; i < viewGroup.getChildCount(); i++) {
-            View child = viewGroup.getChildAt(i);
-            if (child != null) {
-                if (setClickListener) {
-                    oneClick(child);
-                    longClick(child);
-                }
-                builder.append(child.getClass().getName()).append("\n\n");
-            }
-        }
-        AlertDialog.Builder builder1 = new AlertDialog.Builder(viewGroup.getContext());
-        builder1.setTitle("插件: 怎么活啊 - 永辉 - 调试");
-        builder1.setMessage(builder.toString());
-        builder1.setNegativeButton("确定", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                dialog.dismiss();
-            }
-        });
-        builder1.show();
-    }
-
-    private String getSelectedTextViewText(TextView textView) {
-        if (textView == null) {
-            return "";
-        } else {
-            CharSequence text = textView.getText();
-            if (textView.getSelectionStart() == textView.getSelectionEnd()) {
-                return text.toString();
-            } else {
-                CharSequence selected = text.subSequence(textView.getSelectionStart(), textView.getSelectionEnd());
-                return selected.toString();
-            }
-        }
-    }
-
-    private void findViewMethod(Object viewContainer, String name) {
-        View l = null;
-        try {
-            l = (View) XposedHelpers.callMethod(viewContainer, name);
-        } catch (Exception e) {
-            XposedBridge.log("Svran: " + name + " 错误 =>" + e.getMessage());
-        }
-        if (l != null) {
-            XposedBridge.log("Svran: 单项Method: （" + name + "） -> " + l);
-            l.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View v) {
-                    Toast.makeText(v.getContext(), "长按到了" + name, Toast.LENGTH_SHORT).show();
-                    return true;
-                }
-            });
-            l.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    Toast.makeText(v.getContext(), "点击到了" + name, Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
-    }
-
-    private void findViewField(Object viewContainer, String name) {
-        View l = null;
-        try {
-            l = (View) XposedHelpers.getObjectField(viewContainer, name);
-        } catch (NoSuchMethodError | ClassCastException | NoSuchFieldError e) {
-            XposedBridge.log("Svran: " + name + " 错误 =>" + e.getMessage());
-        }
-        if (l != null) {
-            XposedBridge.log("Svran: 单项Field: （" + name + "） -> " + l);
-            l.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View v) {
-                    XposedBridge.log("Svran: 长按到了 " + name);
-                    Toast.makeText(v.getContext(), "长按到了" + name, Toast.LENGTH_SHORT).show();
-                    return true;
-                }
-            });
-            l.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    XposedBridge.log("Svran: 点击到了 " + name);
-                    Toast.makeText(v.getContext(), "点击到了" + name, Toast.LENGTH_SHORT).show();
-                }
-            });
-        }
     }
 
     private void testHook(ClassLoader classLoader) {
