@@ -223,7 +223,8 @@ public class Yh {
                 price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
                 break;
             case "hc.o3": // 购物车的 之前版本
-            case "ic.p3": // 购物车的
+            case "ic.p3": // 购物车的 之前版本
+            case "jc.p3": // 购物车的
                 try {
                     image = (View) XposedHelpers.getObjectField(viewContainer, "I");
                 } catch (Exception e) {
