@@ -224,7 +224,8 @@ public class Yh {
                 break;
             case "hc.o3": // 购物车的 之前版本
             case "ic.p3": // 购物车的 之前版本
-            case "jc.p3": // 购物车的
+            case "jc.p3": // 购物车的 之前版本
+            case "lc.p3": // 购物车的
                 try {
                     image = (View) XposedHelpers.getObjectField(viewContainer, "I");
                 } catch (Exception e) {

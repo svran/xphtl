@@ -10,6 +10,8 @@ import android.view.ViewGroup;
 import android.widget.TextView;
 import android.widget.Toast;
 
+import java.lang.reflect.Field;
+
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
 import de.robv.android.xposed.XposedHelpers;
@@ -193,9 +195,24 @@ public class Dd {
             switch (itemViewType) {
                 case 7:
                     Object cartCommonWareView = XposedHelpers.getObjectField(vh, "cartCommonWareView"); // CartCommonWareView
+//                    printAllFiled(cartCommonWareView);
                     Object mPictureIV = XposedHelpers.getObjectField(cartCommonWareView, "mPictureIV");
-                    Object mCartPriceView = XposedHelpers.getObjectField(cartCommonWareView, "mCartPriceView");
-                    Object mPriceTextView = XposedHelpers.getObjectField(mCartPriceView, "mPriceTextView");
+
+                    Object mCartPriceView;
+                    if (XposedHelpers.findFieldIfExists(cartCommonWareView.getClass(), "mCartPriceView") != null)
+                        mCartPriceView = XposedHelpers.getObjectField(cartCommonWareView, "mCartPriceView");
+                    else
+                        mCartPriceView = XposedHelpers.getObjectField(cartCommonWareView, "mPriceView");
+
+//                    printAllFiled(mCartPriceView);
+                    Object mPriceTextView;
+                    if (XposedHelpers.findFieldIfExists(cartCommonWareView.getClass(), "mCartPriceView") != null) {
+                        mPriceTextView = XposedHelpers.getObjectField(mCartPriceView, "mPriceTextView");
+                    } else {
+                        mPriceTextView = XposedHelpers.getObjectField(mCartPriceView, "binding");
+//                        printAllFiled(mPriceTextView);
+                        mPriceTextView = (View) XposedHelpers.getObjectField(mPriceTextView, "mPriceTextView");
+                    }
                     Object mNameTV = XposedHelpers.getObjectField(cartCommonWareView, "mNameTV");
                     if (mPictureIV instanceof View && mNameTV instanceof TextView && mPriceTextView instanceof TextView) {
                         hookProductCardOrItem((View) mPictureIV, (TextView) mNameTV, (TextView) mPriceTextView);
@@ -209,6 +226,14 @@ public class Dd {
             }
         } catch (Exception e) {
             XposedBridge.log("SvranE cart: " + e.getMessage());
+        }
+    }
+
+    private void printAllFiled(Object object) {
+        XposedBridge.log("Svran: 所有Filed: " + object.getClass().getName());
+        Field[] allF = object.getClass().getDeclaredFields();
+        for (Field field : allF) {
+            XposedBridge.log("Svran: " + field.getName());
         }
     }
 
@@ -241,7 +266,7 @@ public class Dd {
     }
 
     private void hookProductCardOrItem(View image, TextView title, TextView price) {
-        if (image != null && title != null && price != null) {
+        if (image != null && title != null && price != null && !title.getText().toString().isEmpty()) {
             image.setOnClickListener(new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
