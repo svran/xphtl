@@ -10,6 +10,7 @@ import android.view.View;
 import android.view.ViewGroup;
 import android.widget.TextView;
 
+import java.lang.reflect.Field;
 import java.lang.reflect.Method;
 
 import de.robv.android.xposed.XC_MethodHook;
@@ -208,7 +209,9 @@ public class Yh {
         View image = null;
         TextView title;
         TextView price;
+        // 升级攻略 1. 获取控件
 //        XposedBridge.log("Svran: 控件: " + viewContainer.getClass().getName());
+        // 升级攻略 2. Log看控件名
         switch (viewContainer.getClass().getName()) {
 //            case "t5.f":
 //                break;
@@ -222,10 +225,12 @@ public class Yh {
                 title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
                 price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
                 break;
+            // 升级攻略 3. 添加对应控件名
             case "hc.o3": // 购物车的 之前版本
             case "ic.p3": // 购物车的 之前版本
             case "jc.p3": // 购物车的 之前版本
-            case "lc.p3": // 购物车的
+            case "lc.p3": // 购物车的 之前版本
+            case "mc.p3": // 购物车的
                 try {
                     image = (View) XposedHelpers.getObjectField(viewContainer, "I");
                 } catch (Exception e) {
@@ -238,9 +243,35 @@ public class Yh {
                 price = (TextView) XposedHelpers.getObjectField(viewContainer, "l");
                 break;
             default:
-                image = (View) XposedHelpers.callMethod(viewContainer, "p");
-                title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
-                price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
+                Method method = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "p");
+                if (method != null) {
+                    image = (View) XposedHelpers.callMethod(viewContainer, "p");
+                    Method methodTitle = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "z");
+                    if (methodTitle != null)
+                        title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
+                    else title = null;
+                    Method methodPrice = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "t");
+                    if (methodPrice != null)
+                        price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
+                    else price = null;
+                } else {
+                    Field field = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "I");
+                    if (field != null)
+                        image = (View) XposedHelpers.getObjectField(viewContainer, "I");
+                    if (image == null) {
+                        Field field2 = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "K");
+                        if (field2 != null)
+                            image = (View) XposedHelpers.getObjectField(viewContainer, "K");
+                    }
+                    Field fieldTitle = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "l1");
+                    if (fieldTitle != null)
+                        title = (TextView) XposedHelpers.getObjectField(viewContainer, "l1");
+                    else title = null;
+                    Field fieldPrice = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "l");
+                    if (fieldPrice != null)
+                        price = (TextView) XposedHelpers.getObjectField(viewContainer, "l");
+                    else price = null;
+                }
         }
 
         if (image != null && title != null && price != null) {
