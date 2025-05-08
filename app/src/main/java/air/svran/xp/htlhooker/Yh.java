@@ -62,7 +62,7 @@ public class Yh {
                 viewHolder = XposedHelpers.findClass("androidx.recyclerview.widget.RecyclerView$e0", classLoader);
                 adapter = XposedHelpers.findClass("androidx.recyclerview.widget.RecyclerView$h", classLoader);
                 hookOnBindViewHolder(classLoader);
-                hookRvVhOnBind(classLoader);
+                hookCart(classLoader);
             }
         });
     }
@@ -79,10 +79,30 @@ public class Yh {
                 super.afterHookedMethod(param);
                 Object vh = param.args[0];
                 View itemView = (View) XposedHelpers.getObjectField(vh, "itemView");
-//                printStackTrace();
+//                XposedBridge.log("Svran:\n VH==> " + vh.getClass().getName() + " , itemView ==> " + itemView);
                 if (itemView instanceof ViewGroup) {
                     ViewGroup vg = (ViewGroup) itemView;
                     longClick(vg);
+                }
+                boolean hooked = false;
+                try {
+                    Object viewContainer = XposedHelpers.callMethod(vh, "getViewContainer");
+                    hookProductCardOrItem(viewContainer);
+                    hooked = true;
+//                    XposedBridge.log("Svran: 满足 getViewContainer");
+                } catch (NoSuchMethodError e) {
+//                    XposedBridge.log("Svran: 错误 getViewContainer => " + e.getMessage());
+                }
+                if (!hooked) try { // 这里应该是购物车的
+//                    XposedBridge.log("Svran: 购物车 请求方法");
+                    Context context = itemView.getContext();
+                    int versionCode = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionCode;
+                    String methodName = (versionCode < 2023144000) ? "a0" : "b0";
+
+                    Object a0 = XposedHelpers.callMethod(vh, methodName);
+                    hookProductCardOrItem(a0);
+                } catch (NoSuchMethodError e) {
+//                    XposedBridge.log("Svran: 错误 购物车 请求方法 => " + e.getMessage());
                 }
             }
         });
@@ -120,18 +140,6 @@ public class Yh {
         builder1.show();
     }
 
-    private void clearAllLongClickListener(ViewGroup group) {
-        for (int i = 0; i < group.getChildCount(); i++) {
-            View view = group.getChildAt(i);
-            if (view instanceof ViewGroup) {
-                ViewGroup vg = (ViewGroup) view;
-                clearAllLongClickListener(vg);
-            } else {
-                view.setOnLongClickListener(null);
-            }
-        }
-    }
-
     private void clearAllClickListener(ViewGroup group) {
         for (int i = 0; i < group.getChildCount(); i++) {
             View view = group.getChildAt(i);
@@ -160,122 +168,63 @@ public class Yh {
         }
     }
 
-    private void hookRvVhOnBind(ClassLoader classLoader) {
-        XposedHelpers.findAndHookMethod(adapter, "bindViewHolder", viewHolder, int.class, new XC_MethodHook() {
-            @Override
-            protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
-                super.beforeHookedMethod(param);
-            }
-
-            @Override
-            protected void afterHookedMethod(MethodHookParam param) throws Throwable {
-                super.afterHookedMethod(param);
-//                XposedBridge.log("Svran: 绑定bindViewHolder:" + param.args[0].getClass().getName());
-                try {
-                    Method method = XposedHelpers.findMethodBestMatch(param.args[0].getClass(), "getViewContainer");
-                    if (method != null) {
-                        try {
-                            Object viewContainer = XposedHelpers.callMethod(param.args[0], "getViewContainer");
-                            // 此处获取的可能是 ma.a
-                            hookProductCardOrItem(viewContainer);
-//                            hookTestViewContainer(viewContainer);
-                        } catch (Exception e) {
-//                            XposedBridge.log("Svran: getViewContainer => " + e.getMessage());
-                        }
-                    }
-                } catch (NoSuchMethodError e) {
-//                    XposedBridge.log("Svran: ma.a => " + e.getMessage());
-                }
-                try { // 这里应该是购物车的
-                    Method method = XposedHelpers.findMethodBestMatch(param.args[0].getClass(), "a0");
-                    if (method != null) {
-                        try {
-                            Object a0 = XposedHelpers.callMethod(param.args[0], "a0");
-                            // 此处获取的可能是 hc.o3
-                            hookProductCardOrItem(a0);
-//                            hookTestA0(a0);
-                        } catch (Exception e) {
-//                            XposedBridge.log("Svran: a0 => " + e.getMessage());
-                        }
-                    }
-                } catch (NoSuchMethodError e) {
-//                    XposedBridge.log("Svran: ic.p3 => " + e.getMessage());
-                }
-            }
-        });
+    private void hookCart(ClassLoader classLoader) {
     }
 
     private void hookProductCardOrItem(Object viewContainer) {
         View image = null;
+        View image2 = null;
         TextView title;
         TextView price;
         // 升级攻略 1. 获取控件
 //        XposedBridge.log("Svran: 控件: " + viewContainer.getClass().getName());
         // 升级攻略 2. Log看控件名
         switch (viewContainer.getClass().getName()) {
-//            case "t5.f":
-//                break;
-//            case "na.a":
-//                image = (View) XposedHelpers.callMethod(viewContainer, "p");
-//                title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
-//                price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
-//                break;
-            case "ma.a":
-                image = (View) XposedHelpers.callMethod(viewContainer, "p");
-                title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
-                price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
-                break;
-            // 升级攻略 3. 添加对应控件名
-            case "hc.o3": // 购物车的 之前版本
-            case "ic.p3": // 购物车的 之前版本
-            case "jc.p3": // 购物车的 之前版本
-            case "lc.p3": // 购物车的 之前版本
-            case "mc.p3": // 购物车的
-                try {
-                    image = (View) XposedHelpers.getObjectField(viewContainer, "I");
-                } catch (Exception e) {
-                }
-                if (image == null) try {
-                    image = (View) XposedHelpers.getObjectField(viewContainer, "K");
-                } catch (Exception e) {
-                }
-                title = (TextView) XposedHelpers.getObjectField(viewContainer, "l1");
-                price = (TextView) XposedHelpers.getObjectField(viewContainer, "l");
-                break;
-            default:
-                Method method = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "p");
-                if (method != null) {
-                    image = (View) XposedHelpers.callMethod(viewContainer, "p");
-                    Method methodTitle = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "z");
-                    if (methodTitle != null)
-                        title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
-                    else title = null;
-                    Method methodPrice = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "t");
-                    if (methodPrice != null)
-                        price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
-                    else price = null;
-                } else {
-                    Field field = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "I");
-                    if (field != null)
-                        image = (View) XposedHelpers.getObjectField(viewContainer, "I");
-                    if (image == null) {
-                        Field field2 = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "K");
-                        if (field2 != null)
-                            image = (View) XposedHelpers.getObjectField(viewContainer, "K");
-                    }
-                    Field fieldTitle = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "l1");
-                    if (fieldTitle != null)
-                        title = (TextView) XposedHelpers.getObjectField(viewContainer, "l1");
-                    else title = null;
-                    Field fieldPrice = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "l");
-                    if (fieldPrice != null)
-                        price = (TextView) XposedHelpers.getObjectField(viewContainer, "l");
-                    else price = null;
-                }
+            case "kotlinx.coroutines.internal.j":
+            case "":
+//                XposedBridge.log("Svran: 跳过 : " + viewContainer.getClass().getName());
+                return;
         }
 
-        if (image != null && title != null && price != null) {
-            image.setOnClickListener(new View.OnClickListener() {
+        Method methodImage = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "p");
+        Method methodTitle = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "z");
+        Method methodPrice = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "t");
+
+        Field fieldImageI = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "I");
+        Field fieldImageK = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "K");
+        Field fieldTitle = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "l1");
+        Field fieldPrice = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "l");
+
+        if (methodImage != null && methodPrice != null && methodTitle != null) {
+            image = (View) XposedHelpers.callMethod(viewContainer, "p");
+            image2 = (View) XposedHelpers.callMethod(viewContainer, "p");
+            title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
+            price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
+//            XposedBridge.log("Svran: 调用方法: " + viewContainer.getClass().getName());
+        } else if (fieldTitle != null && fieldPrice != null && (fieldImageI != null || fieldImageK != null)) {
+//            XposedBridge.log("Svran: fieldImageI == null : " + (fieldImageI == null) + " , fieldImageK == null : " + (fieldImageK == null));
+            try {
+                image = (View) XposedHelpers.getObjectField(viewContainer, "I");
+            } catch (Throwable e) {
+            }
+            try {
+                image2 = (View) XposedHelpers.getObjectField(viewContainer, "K");
+            } catch (Throwable e) {
+            }
+            title = (TextView) XposedHelpers.getObjectField(viewContainer, "l1");
+            price = (TextView) XposedHelpers.getObjectField(viewContainer, "l");
+//            XposedBridge.log("Svran: 获取字段: " + viewContainer.getClass().getName());
+        } else {
+            title = null;
+            price = null;
+//            XposedBridge.log("Svran: 未匹配: " + viewContainer.getClass().getName());
+        }
+        xpDialog(image, image2, title, price);
+    }
+
+    private void xpDialog(View image, View image2, TextView title, TextView price) {
+        if ((image != null || image2 != null) && title != null && price != null) {
+            View.OnClickListener l = new View.OnClickListener() {
                 @Override
                 public void onClick(View v) {
                     AlertDialog.Builder builder = new AlertDialog.Builder(v.getContext());
@@ -330,13 +279,16 @@ public class Yh {
                     });
                     builder.show();
                 }
-            });
+            };
+            if (image != null) image.setOnClickListener(l);
+            if (image2 != null) image2.setOnClickListener(l);
             longClick(image);
+            longClick(image2);
         }
     }
 
     private void longClick(View view) {
-        view.setOnLongClickListener(new View.OnLongClickListener() {
+        if (view != null) view.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(v.getContext());
@@ -383,31 +335,6 @@ public class Yh {
         }
     }
 
-    private void findViewMethod(Object viewContainer, String name) {
-        View l = null;
-        try {
-            l = (View) XposedHelpers.callMethod(viewContainer, name);
-        } catch (Exception e) {
-            XposedBridge.log("Svran: " + name + " 错误 =>" + e.getMessage());
-        }
-        if (l != null) {
-            XposedBridge.log("Svran: 单项Method: （" + name + "） -> " + l);
-            l.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View v) {
-                    dialogShowInfo(v.getContext(), "长按到了" + name + "\n\nID: " + getViewIdName(v));
-                    return true;
-                }
-            });
-            l.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    dialogShowInfo(v.getContext(), "点击到了" + name + "\n\nID: " + getViewIdName(v));
-                }
-            });
-        }
-    }
-
     private void dialogShowInfo(Context context, String message) {
         XposedBridge.log("SvranDialogShowInfo: " + message);
 //        Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
@@ -422,151 +349,6 @@ public class Yh {
             }
         });
         builder.show();
-    }
-
-    private void findViewField(Object viewContainer, String name) {
-        View l = null;
-        try {
-            l = (View) XposedHelpers.getObjectField(viewContainer, name);
-        } catch (NoSuchMethodError | ClassCastException | NoSuchFieldError e) {
-            XposedBridge.log("Svran: " + name + " 错误 =>" + e.getMessage());
-        }
-        if (l != null) {
-            XposedBridge.log("Svran: 单项Field: （" + name + "） -> " + l);
-            l.setOnLongClickListener(new View.OnLongClickListener() {
-                @Override
-                public boolean onLongClick(View v) {
-                    XposedBridge.log("Svran: 长按到了 " + name + "\n\nID: " + getViewIdName(v));
-                    dialogShowInfo(v.getContext(), "长按到了" + name + "\n\nID: " + getViewIdName(v));
-                    return true;
-                }
-            });
-            l.setOnClickListener(new View.OnClickListener() {
-                @Override
-                public void onClick(View v) {
-                    XposedBridge.log("Svran: 点击到了 " + name + "\n\nID: " + getViewIdName(v));
-                    dialogShowInfo(v.getContext(), "点击到了" + name + "\n\nID: " + getViewIdName(v));
-                }
-            });
-        }
-    }
-
-    private void hookTestA0(Object a0) {
-        XposedBridge.log("Svran: 购物车类型 -> a0:" + a0.getClass().getName());
-//        findViewField(a0, "A"); // FrameLayout
-//        findViewField(a0, "B"); // RelativeLayout
-//        findViewField(a0, "C"); // FlexboxLayout
-        findViewField(a0, "D"); // PriceFontView
-//        findViewField(a0, "E"); // IconFont
-//        findViewField(a0, "F"); // IconFont
-//        findViewField(a0, "G"); // IconFont
-//        findViewField(a0, "H"); // IconFont
-//        findViewField(a0, "I"); // RoundImageLoaderView // 商品图
-        findViewField(a0, "J"); // RoundImageLoaderView
-//        findViewField(a0, "K"); // TextView // 售罄商品图上的售罄文字
-//        findViewField(a0, "L"); // RelativeLayout
-//        findViewField(a0, "M"); // LinearLayout
-//        findViewField(a0, "N"); // LinearLayout
-//        findViewField(a0, "O"); // IconFont
-        findViewField(a0, "P"); // PriceFontView
-//        findViewField(a0, "Q"); // ConstraintLayout
-//        findViewField(a0, "R"); // Space
-//        findViewField(a0, "S"); // RoundConstraintLayout
-//        findViewField(a0, "T"); // RoundTextView
-//        findViewField(a0, "U"); // CartCountDownView
-//            public final f3 V;
-//        findViewField(a0, "V");
-//            public final f3 W;
-//        findViewField(a0, "W");
-//            public final f3 X;
-//        findViewField(a0, "X");
-//        findViewField(a0, "Y"); // TextView
-//        findViewField(a0, "Z"); // DraweeTextView
-//        findViewField(a0, "a"); // RoundConstraintLayout
-//        findViewField(a0, "b"); // LinearLayout
-//        findViewField(a0, "c"); // Space
-//        findViewField(a0, "d"); // DraweeTextView
-//        findViewField(a0, "e"); // TextView
-//        findViewField(a0, "e1"); // Space
-        findViewField(a0, "f"); // ImageView
-        findViewField(a0, "f1"); // PriceFontView
-//        findViewField(a0, "g"); // ConstraintLayout
-//        findViewField(a0, "g1"); // TextView
-//        findViewField(a0, "h"); // LinearLayout
-//        findViewField(a0, "h1"); // SubmitButton
-//        findViewField(a0, "i"); // YHCheckBox
-//        findViewField(a0, "i1"); // TextView
-//        findViewField(a0, "j"); // ConstraintLayout
-//        findViewField(a0, "j1"); // TextView
-//        findViewField(a0, "k"); // IconFont
-//        findViewField(a0, "k1"); // TextView
-//        findViewField(a0, "l"); // 现价格 // PriceFontView
-//        findViewField(a0, "l1"); // 标题 商品名等 // DraweeTextView
-//        findViewField(a0, "m"); // DraweeTextView
-//        findViewField(a0, "m1"); // DraweeTextView
-//        findViewField(a0, "n"); // DraweeTextView
-//        findViewField(a0, "n1"); // DraweeTextView
-//        findViewField(a0, "o"); // TextView
-//        findViewField(a0, "o1"); // TextView
-//        findViewField(a0, "p"); // TextView
-//        findViewField(a0, "p1"); // DraweeTextView
-//        findViewField(a0, "q"); // DraweeTextView
-//        findViewField(a0, "q1"); // DraweeTextView
-//        findViewField(a0, "r"); // DraweeTextView
-//        findViewField(a0, "r1"); // DraweeTextView
-//        findViewField(a0, "s"); // DraweeTextView
-//        findViewField(a0, "s1"); // DraweeTextView
-//        findViewField(a0, "t"); // ConstraintLayout f60784t;
-//        findViewField(a0, "t1"); // TextView
-//        findViewField(a0, "u"); // ConstraintLayout f60786u;
-//        findViewField(a0, "u1"); // SubmitButton
-//        findViewField(a0, "v"); // LinearLayout f60788v;
-//        findViewField(a0, "v1"); // TextView
-//        findViewField(a0, "w"); // TextView f60790w;
-//        findViewField(a0, "w1"); // TextView
-        findViewField(a0, "x"); // PriceFontView f60792x;
-//        findViewField(a0, "x1"); // View
-//        findViewField(a0, "y"); // ConstraintLayout f60794y;
-//        findViewField(a0, "y1"); // View
-//        findViewField(a0, "z"); // FrameLayout f60796z;
-    }
-
-    private void hookTestViewContainer(Object viewContainer) {
-        XposedBridge.log("Svran: 大卡片类型 -> viewContainer:" + viewContainer.getClass().getName());
-        findViewMethod(viewContainer, "B");
-        findViewMethod(viewContainer, "D");
-//        findViewMethod(viewContainer, "E"); // x件起购
-        findViewMethod(viewContainer, "F");
-        findViewMethod(viewContainer, "G");
-//        findViewMethod(viewContainer, "H"); // 折券 / 搜索商品: 热销榜
-        findViewMethod(viewContainer, "I");
-        findViewMethod(viewContainer, "J");
-//        findViewMethod(viewContainer, "K"); // 布局
-//        findViewMethod(viewContainer, "b"); // 到货提醒
-//        findViewMethod(viewContainer, "c"); // 加入购物车
-        findViewMethod(viewContainer, "d");
-        findViewMethod(viewContainer, "e");
-        findViewMethod(viewContainer, "f");
-        findViewMethod(viewContainer, "g");
-        findViewMethod(viewContainer, "h");
-        findViewMethod(viewContainer, "i");
-//        findViewMethod(viewContainer, "j"); // 限时抢 进度条
-        findViewMethod(viewContainer, "k");
-        findViewMethod(viewContainer, "l");
-        findViewMethod(viewContainer, "m");
-        findViewMethod(viewContainer, "n");
-        findViewMethod(viewContainer, "o");
-//        findViewMethod(viewContainer, "p"); // 商品图片
-//        findViewMethod(viewContainer, "q"); // 买过 / xx人认为xxx
-//        findViewMethod(viewContainer, "r"); // 原价
-        findViewMethod(viewContainer, "s");
-//        findViewMethod(viewContainer, "t"); // 现价
-//        findViewMethod(viewContainer, "u"); // x.x折特价
-        findViewMethod(viewContainer, "v");
-//        findViewMethod(viewContainer, "w"); // 描述
-        findViewMethod(viewContainer, "x");
-//        findViewMethod(viewContainer, "y"); // 折券
-//        findViewMethod(viewContainer, "z"); // 商品 标题 土豆 xxg
     }
 
     private void testHook(ClassLoader classLoader) {
