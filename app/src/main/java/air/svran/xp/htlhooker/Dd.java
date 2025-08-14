@@ -1,6 +1,7 @@
 package air.svran.xp.htlhooker;
 
 import android.app.AlertDialog;
+import android.content.Context;
 import android.content.DialogInterface;
 import android.content.Intent;
 import android.net.Uri;
@@ -11,6 +12,7 @@ import android.widget.TextView;
 import android.widget.Toast;
 
 import java.lang.reflect.Field;
+import java.lang.reflect.Method;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -32,6 +34,8 @@ public class Dd {
     public Dd(XC_LoadPackage.LoadPackageParam lpparam) {
         hook(lpparam);
     }
+
+    private final boolean debug = false;
 
     public void hook(XC_LoadPackage.LoadPackageParam lpparam) {
         XposedBridge.log("Svran: Hook 多点");
@@ -65,7 +69,7 @@ public class Dd {
     }
 
     private void hookCreateViewHolder(ClassLoader classLoader) {
-        XposedHelpers.findAndHookMethod(adapter, "createViewHolder", ViewGroup.class, int.class, new XC_MethodHook() {
+        XposedHelpers.findAndHookMethod(adapter, "createViewHolder", android.view.ViewGroup.class, int.class, new XC_MethodHook() {
             @Override
             protected void beforeHookedMethod(MethodHookParam param) throws Throwable {
                 super.beforeHookedMethod(param);
@@ -130,7 +134,7 @@ public class Dd {
             Object mGoodsItemMiddleView = XposedHelpers.getObjectField(itemView, "mGoodsItemMiddleView");
             Object mWareNameTextView = XposedHelpers.getObjectField(mGoodsItemMiddleView, "mWareNameTextView");
             if (mSquareTagsImageView instanceof View && mWareNameTextView instanceof TextView && mDisplayPriceTextView instanceof TextView) {
-                hookProductCardOrItem((View) mSquareTagsImageView, (TextView) mWareNameTextView, (TextView) mDisplayPriceTextView);
+                hookProductCardOrItem(vh, itemView, (View) mSquareTagsImageView, (TextView) mWareNameTextView, (TextView) mDisplayPriceTextView);
             } else {
                 boolean b1 = mSquareTagsImageView instanceof View;
                 boolean b2 = mWareNameTextView instanceof TextView;
@@ -152,7 +156,7 @@ public class Dd {
                     Object tvWareName = XposedHelpers.getObjectField(binding, "tvWareName");
                     Object tvWarePrice = XposedHelpers.getObjectField(binding, "tvWarePrice");
                     if (imageView instanceof View && tvWareName instanceof TextView && tvWarePrice instanceof TextView) {
-                        hookProductCardOrItem((View) imageView, (TextView) tvWareName, (TextView) tvWarePrice);
+                        hookProductCardOrItem(vh, binding, (View) imageView, (TextView) tvWareName, (TextView) tvWarePrice);
                     } else {
                         boolean b1 = imageView instanceof View;
                         boolean b2 = tvWareName instanceof TextView;
@@ -176,7 +180,7 @@ public class Dd {
                     Object nameTV = XposedHelpers.getObjectField(itemView, "nameTV");
                     Object priceTV = XposedHelpers.getObjectField(itemView, "priceTV");
                     if (pictureIV instanceof View && nameTV instanceof TextView && priceTV instanceof TextView) {
-                        hookProductCardOrItem((View) pictureIV, (TextView) nameTV, (TextView) priceTV);
+                        hookProductCardOrItem(vh, itemView, (View) pictureIV, (TextView) nameTV, (TextView) priceTV);
                     } else {
                         boolean b1 = pictureIV instanceof View;
                         boolean b2 = nameTV instanceof TextView;
@@ -215,7 +219,7 @@ public class Dd {
                     }
                     Object mNameTV = XposedHelpers.getObjectField(cartCommonWareView, "mNameTV");
                     if (mPictureIV instanceof View && mNameTV instanceof TextView && mPriceTextView instanceof TextView) {
-                        hookProductCardOrItem((View) mPictureIV, (TextView) mNameTV, (TextView) mPriceTextView);
+                        hookProductCardOrItem(vh, null, (View) mPictureIV, (TextView) mNameTV, (TextView) mPriceTextView);
                     } else {
                         boolean b1 = mPictureIV instanceof View;
                         boolean b2 = mNameTV instanceof TextView;
@@ -250,7 +254,7 @@ public class Dd {
                     Object mGoodsItemMiddleView = XposedHelpers.getObjectField(itemView, "mGoodsItemMiddleView");
                     Object mWareNameTextView = XposedHelpers.getObjectField(mGoodsItemMiddleView, "mWareNameTextView");
                     if (mSquareTagsImageView instanceof View && mWareNameTextView instanceof TextView && mDisplayPriceTextView instanceof TextView) {
-                        hookProductCardOrItem((View) mSquareTagsImageView, (TextView) mWareNameTextView, (TextView) mDisplayPriceTextView);
+                        hookProductCardOrItem(vh, itemView, (View) mSquareTagsImageView, (TextView) mWareNameTextView, (TextView) mDisplayPriceTextView);
                     } else {
                         boolean b1 = mSquareTagsImageView instanceof View;
                         boolean b2 = mWareNameTextView instanceof TextView;
@@ -265,7 +269,7 @@ public class Dd {
         }
     }
 
-    private void hookProductCardOrItem(View image, TextView title, TextView price) {
+    private void hookProductCardOrItem(Object vh, Object viewContainer, View image, TextView title, TextView price) {
         if (image != null && title != null && price != null && !title.getText().toString().isEmpty()) {
             image.setOnClickListener(new View.OnClickListener() {
                 @Override
@@ -323,23 +327,33 @@ public class Dd {
                     builder.show();
                 }
             });
-            longClick(image);
+            longClick(vh, viewContainer, image);
         }
     }
 
-    private void longClick(View view) {
-        view.setOnLongClickListener(new View.OnLongClickListener() {
+    private void longClick(Object vh, Object viewContainer, View view) {
+        if (view != null) view.setOnLongClickListener(new View.OnLongClickListener() {
             @Override
             public boolean onLongClick(View v) {
                 AlertDialog.Builder builder = new AlertDialog.Builder(v.getContext());
                 builder.setTitle("插件: 怎么活啊 - 重百 - 调试");
-                builder.setItems(new CharSequence[]{"获取父控件所有控件", "给父控件下所有子控件设置点击事件"}, new DialogInterface.OnClickListener() {
+                builder.setItems(new CharSequence[]{"获取父控件所有控件", "给父控件下所有子控件设置点击事件", "Method列表, vh名: " + vh.getClass().getName(), "Filed 列表"}, new DialogInterface.OnClickListener() {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         if (which == 0) {
-                            findAndShowAllViews((ViewGroup) v.getParent(), false);
+//                            setOnLongClickAllChildView()
+                            setOnLongClickAllChildView(vh, viewContainer, (ViewGroup) v.getParent(), false);
                         } else if (which == 1) {
-                            findAndShowAllViews((ViewGroup) v.getParent(), true);
+//                            findAndShowAllViews
+                            clearAllClickListener((ViewGroup) v.getParent());
+                            setOnLongClickAllChildView(vh, viewContainer, (ViewGroup) v.getParent(), true);
+                        } else if (which == 2) {
+                            showMessageDialog(view.getContext(), "vh", showAllMethod(vh));
+                        } else {
+                            if (viewContainer == null)
+                                Toast.makeText(v.getContext(), "没有 viewContainer", Toast.LENGTH_LONG).show();
+                            else
+                                showMessageDialog(view.getContext(), "viewContainer", showAllField(viewContainer));
                         }
                     }
                 });
@@ -358,8 +372,42 @@ public class Dd {
         });
     }
 
+    private void setOnLongClickAllChildView(Object vh, Object viewContainer, ViewGroup viewGroup, boolean setClickListener) {
+        if (viewGroup == null) return;
+        StringBuilder builder = new StringBuilder();
+        int count = viewGroup.getChildCount();
+//        clearAllClickListener(viewGroup);
+//        clearAllLongClickListener(viewGroup);
+        for (int i = 0; i < count; i++) {
+            View child = viewGroup.getChildAt(i);
+            if (child != null) builder.append(child.getClass().getName()).append("\n\n");
+            if (child instanceof ViewGroup) {
+                ViewGroup vgChild = (ViewGroup) child;
+//                setOnLongClickAllChildView(vgChild, setClickListener);
+                longClick(vh, viewContainer, child);
+            } else if (child != null) {
+                if (setClickListener) oneClick(child);
+                else child.setOnClickListener(null);
+            }
+        }
+        showMessageDialog(viewGroup.getContext(), "插件: 怎么活啊 - 重百 - 调试", builder.toString());
+    }
+
+    private void clearAllClickListener(ViewGroup group) {
+        for (int i = 0; i < group.getChildCount(); i++) {
+            View view = group.getChildAt(i);
+            if (view instanceof ViewGroup) {
+                ViewGroup vg = (ViewGroup) view;
+                clearAllClickListener(vg);
+            } else {
+//                view.setOnClickListener(null);
+                oneClick(view);
+            }
+        }
+    }
+
     // 获取父控件所有控件, Dialog输出
-    private void findAndShowAllViews(ViewGroup viewGroup, boolean setClickListener) {
+    private void findAndShowAllViews(Object vh, Object viewContainer, ViewGroup viewGroup, boolean setClickListener) {
         if (viewGroup == null) {
             return;
         }
@@ -369,21 +417,12 @@ public class Dd {
             if (child != null) {
                 if (setClickListener) {
                     oneClick(child);
-                    longClick(child);
+                    longClick(vh, viewContainer, child);
                 }
                 builder.append(child.getClass().getName()).append("\n\n");
             }
         }
-        AlertDialog.Builder builder1 = new AlertDialog.Builder(viewGroup.getContext());
-        builder1.setTitle("插件: 怎么活啊 - 重百 - 调试");
-        builder1.setMessage(builder.toString());
-        builder1.setNegativeButton("确定", new DialogInterface.OnClickListener() {
-            @Override
-            public void onClick(DialogInterface dialog, int which) {
-                dialog.dismiss();
-            }
-        });
-        builder1.show();
+        showMessageDialog(viewGroup.getContext(), "插件: 怎么活啊 - 重百 - 调试", builder.toString());
     }
 
     private String getSelectedTextViewText(TextView textView) {
@@ -454,5 +493,44 @@ public class Dd {
     }
 
     private void testHook(ClassLoader classLoader) {
+    }
+
+    private void showMessageDialog(Context context, String title, String message) {
+        AlertDialog.Builder builder = new AlertDialog.Builder(context);
+        builder.setTitle(title == null ? "消息" : title);
+        builder.setMessage(message);
+        builder.setPositiveButton("确定", null);
+        builder.show();
+    }
+
+    private String showAllMethod(Object vh) {
+        StringBuilder sbd = new StringBuilder();
+        // 获取vh所有method
+        for (Method method : vh.getClass().getMethods()) {
+            String rt = method.getReturnType().getName();
+            int pts = method.getParameterTypes().length;
+            String logText = "Svran: name:" + method.getName() + " , 返回类型:" + rt + " , 参数个数: " + pts;
+            XposedBridge.log(logText);
+            sbd.append(logText).append('\n');
+        }
+        return sbd.toString();
+    }
+
+    private String showAllField(Object viewContainer) {
+        StringBuilder sbd = new StringBuilder();
+        // 获取所有字段 展示
+        for (Field field : viewContainer.getClass().getDeclaredFields()) {
+            Object f = XposedHelpers.getObjectField(viewContainer, field.getName());
+            if (f instanceof TextView) {
+                TextView textView = (TextView) f;
+                String txt = textView.getText().toString();
+                if (txt != null && !txt.isEmpty()) {
+                    String logText = "Svran: 字段: " + field.getName() + " , 获取字段值: " + txt;
+                    XposedBridge.log(logText);
+                    sbd.append(logText).append('\n');
+                }
+            }
+        }
+        return sbd.toString();
     }
 }
