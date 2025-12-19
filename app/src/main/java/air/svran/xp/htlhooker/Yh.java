@@ -13,7 +13,6 @@ import android.widget.Toast;
 
 import java.lang.reflect.Field;
 import java.lang.reflect.Method;
-import java.util.Objects;
 
 import de.robv.android.xposed.XC_MethodHook;
 import de.robv.android.xposed.XposedBridge;
@@ -85,34 +84,46 @@ public class Yh {
                 XposedBridge.log("Svran:\n VH==> " + vh.getClass().getName() + " , itemView ==> " + itemView);
                 Context context = itemView.getContext();
                 int versionCode = context.getPackageManager().getPackageInfo(context.getPackageName(), 0).versionCode;
-                if (itemView instanceof ViewGroup) {
-                    ViewGroup vg = (ViewGroup) itemView;
-                    longClick(vh, null, vg);
-                }
                 boolean hooked = false;
                 try {
                     Object viewContainer = XposedHelpers.callMethod(vh, "getViewContainer");
-                    hookProductCardOrItem(vh, versionCode, viewContainer);
-                    hooked = true;
                     XposedBridge.log("Svran: 满足 getViewContainer");
+                    hookProductItem(vh, versionCode, viewContainer);
+                    longClick(vh, viewContainer, itemView);
+                    hooked = true;
                 } catch (NoSuchMethodError e) {
                     XposedBridge.log("Svran: 错误 getViewContainer => " + e.getMessage());
                 }
                 if (!hooked) try { // 这里应该是购物车的
                     XposedBridge.log("Svran: 购物车 请求方法");
-                    String methodName;
-                    if (versionCode < 2023144000) methodName = "a0";
-                    else if (versionCode < 2023148020) methodName = "b0";
-                    else methodName = "c0";
+                    String methodName = "f0";
                     // 升级攻略 1 : 查看methodName, 基本上它长度都是2
                     if (debug) {
                         showAllMethod(vh);
                     }
-                    Object a0 = XposedHelpers.callMethod(vh, methodName);
-                    XposedBridge.log("Svran: a0 : " + a0);
-                    hookProductCardOrItem(vh, versionCode, a0);
+                    Method method = XposedHelpers.findMethodExactIfExists(vh.getClass(), methodName);
+                    if (getViewIdName(itemView).equals("root_layout") || method.getReturnType().getName().equals("view")) {
+                        Object a0 = XposedHelpers.callMethod(vh, methodName);
+                        XposedBridge.log("Svran: a0 : " + a0);
+                        hookCartItem(vh, versionCode, a0);
+                        longClick(vh, a0, itemView);
+                    }
                 } catch (NoSuchMethodError e) {
                     XposedBridge.log("Svran: 错误 购物车 请求方法 => " + e.getMessage());
+                    for (Method method : vh.getClass().getMethods()) {
+                        String rt = method.getReturnType().getName();
+                        if (rt.length() == 5 && rt.indexOf(2) == '.') {
+                            try {
+                                Object a0 = XposedHelpers.callMethod(vh, rt);
+                                XposedBridge.log("Svran矫正: a0 : " + a0);
+                                hookCartItem(vh, versionCode, a0);
+                                longClick(vh, a0, itemView);
+                            } catch (NoSuchMethodError e2) {
+                                XposedBridge.log("Svran: 错误 购物车 升级方法 => " + e2.getMessage());
+                            }
+                            break;
+                        }
+                    }
                 }
             }
         });
@@ -122,14 +133,11 @@ public class Yh {
         if (viewGroup == null) return;
         StringBuilder builder = new StringBuilder();
         int count = viewGroup.getChildCount();
-//        clearAllClickListener(viewGroup);
-//        clearAllLongClickListener(viewGroup);
         for (int i = 0; i < count; i++) {
             View child = viewGroup.getChildAt(i);
             if (child != null) builder.append(child.getClass().getName()).append("\n\n");
             if (child instanceof ViewGroup) {
                 ViewGroup vgChild = (ViewGroup) child;
-//                setOnLongClickAllChildView(vgChild, setClickListener);
                 longClick(vh, viewContainer, child);
             } else if (child != null) {
                 if (setClickListener) oneClick(child);
@@ -157,7 +165,6 @@ public class Yh {
                 ViewGroup vg = (ViewGroup) view;
                 clearAllClickListener(vg);
             } else {
-//                view.setOnClickListener(null);
                 oneClick(view);
             }
         }
@@ -165,13 +172,13 @@ public class Yh {
 
     // 通过id 获取id名称
     private String getViewIdName(View view) {
+        if (view.getId() == -1) return "View.NO_ID";
         return view.getContext().getResources().getResourceEntryName(view.getId());
     }
 
     // 输出堆栈信息
     private void printStackTrace() {
         try {
-//            new Exception().printStackTrace();
             throw new Exception("堆栈信息 Svran Test");
         } catch (Exception e) {
             e.printStackTrace();
@@ -181,7 +188,7 @@ public class Yh {
     private void hookCart(ClassLoader classLoader) {
     }
 
-    private void hookProductCardOrItem(Object vh, long versionCode, Object viewContainer) {
+    private void hookProductItem(Object vh, long versionCode, Object viewContainer) {
 //        XposedBridge.log("Svran: 控件: " + viewContainer.getClass().getName());
         switch (viewContainer.getClass().getName()) {
             case "kotlinx.coroutines.internal.j":
@@ -190,54 +197,90 @@ public class Yh {
                 return;
         }
 
-        View image = null;
-        View image2 = null;
-        TextView title;
-        TextView price;
         if (debug) {
             // 升级攻略 2. Log看控件内容
             showAllField(viewContainer);
         }
-        Method methodImage = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "p");
-        Method methodTitle = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "z");
-        Method methodPrice = XposedHelpers.findMethodExactIfExists(viewContainer.getClass(), "t");
 
-        Field fieldImageI = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "I");
-        Field fieldImageK = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "K");
-        Field fieldTitle = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "l1");
-        Field fieldPrice = XposedHelpers.findFieldIfExists(viewContainer.getClass(), "l");
-
-        if (methodImage != null && methodPrice != null && methodTitle != null) {
-            image = (View) XposedHelpers.callMethod(viewContainer, "p");
-            image2 = (View) XposedHelpers.callMethod(viewContainer, "p");
-            title = (TextView) XposedHelpers.callMethod(viewContainer, "z");
-            price = (TextView) XposedHelpers.callMethod(viewContainer, "t");
-            if (debug) XposedBridge.log("Svran: 调用方法: " + viewContainer.getClass().getName());
-        } else if (fieldTitle != null && fieldPrice != null && (fieldImageI != null || fieldImageK != null)) {
-            if (debug)
-                XposedBridge.log("Svran: fieldImageI == null : " + (fieldImageI == null) + " , fieldImageK == null : " + (fieldImageK == null));
-            try {
-                image = (View) XposedHelpers.getObjectField(viewContainer, "I");
-            } catch (Throwable e) {
-                if (debug) XposedBridge.log("Svran: 图片1错误");
-            }
-            try {
-                image2 = (View) XposedHelpers.getObjectField(viewContainer, "K");
-            } catch (Throwable e) {
-                if (debug) XposedBridge.log("Svran: 图片2错误");
-            }
-            if (versionCode < 2023148020)
-                title = (TextView) XposedHelpers.getObjectField(viewContainer, "l1");
-            else
-                title = (TextView) XposedHelpers.getObjectField(viewContainer, "q1");
-            price = (TextView) XposedHelpers.getObjectField(viewContainer, "l");
-            if (debug) XposedBridge.log("Svran: 获取字段: " + viewContainer.getClass().getName());
-        } else {
-            title = null;
-            price = null;
-            if (debug) XposedBridge.log("Svran: 未匹配: " + viewContainer.getClass().getName());
+        String img1FieldName = "d";
+        String img2FieldName = "img2";
+        String titleFieldName = "e";
+        String priceFieldName = "i";
+        Field image1Field = XposedHelpers.findFieldIfExists(viewContainer.getClass(), img1FieldName);
+        Field image2Field = XposedHelpers.findFieldIfExists(viewContainer.getClass(), img2FieldName);
+        Field titleField = XposedHelpers.findFieldIfExists(viewContainer.getClass(), titleFieldName);
+        Field priceField = XposedHelpers.findFieldIfExists(viewContainer.getClass(), priceFieldName);
+        View image1 = null;
+        View image2 = null;
+        TextView title = null;
+        TextView price = null;
+        if (image1Field != null) {
+            Object imgTmp = XposedHelpers.getObjectField(viewContainer, img1FieldName);
+            image1 = imgTmp instanceof View ? (View) imgTmp : null;
         }
-        xpDialog(vh, viewContainer, image, image2, title, price);
+        if (image2Field != null) {
+            Object imgTmp = XposedHelpers.getObjectField(viewContainer, img2FieldName);
+            image2 = imgTmp instanceof View ? (View) imgTmp : null;
+        }
+        if (titleField != null) {
+            Object titleTmp = XposedHelpers.getObjectField(viewContainer, titleFieldName);
+            title = titleTmp instanceof TextView ? (TextView) titleTmp : null;
+        }
+        if (priceField != null) {
+            Object priceTmp = XposedHelpers.getObjectField(viewContainer, priceFieldName);
+            price = priceTmp instanceof TextView ? (TextView) priceTmp : null;
+        }
+        xpDialog(vh, viewContainer, image1, image2, title, price);
+        if ((image2Field != null || image1Field != null) && titleField != null && priceField != null) {
+            XposedBridge.log("Svran: 获取成功");
+        } else {
+            XposedBridge.log("Svran: 没有获取到");
+        }
+    }
+
+    private void hookCartItem(Object vh, long versionCode, Object viewContainer) {
+//        XposedBridge.log("Svran: 控件: " + viewContainer.getClass().getName());
+        switch (viewContainer.getClass().getName()) {
+            case "kotlinx.coroutines.internal.j":
+            case "":
+//                XposedBridge.log("Svran: 跳过 : " + viewContainer.getClass().getName());
+                return;
+        }
+
+        if (debug) {
+            // 升级攻略 2. Log看控件内容
+            showAllField(viewContainer);
+        }
+
+        String img1FieldName = "N";
+        String img2FieldName = "img2";
+        String titleFieldName = "v1";
+        String priceFieldName = "l";
+        Field image1Field = XposedHelpers.findFieldIfExists(viewContainer.getClass(), img1FieldName);
+        Field image2Field = XposedHelpers.findFieldIfExists(viewContainer.getClass(), img2FieldName);
+        Field titleField = XposedHelpers.findFieldIfExists(viewContainer.getClass(), titleFieldName);
+        Field priceField = XposedHelpers.findFieldIfExists(viewContainer.getClass(), priceFieldName);
+        View image1 = null;
+        View image2 = null;
+        TextView title = null;
+        TextView price = null;
+        if (image1Field != null) {
+            Object imgTmp = XposedHelpers.getObjectField(viewContainer, img1FieldName);
+            image1 = imgTmp instanceof View ? (View) imgTmp : null;
+        }
+        if (image2Field != null) {
+            Object imgTmp = XposedHelpers.getObjectField(viewContainer, img2FieldName);
+            image2 = imgTmp instanceof View ? (View) imgTmp : null;
+        }
+        if (titleField != null) {
+            Object titleTmp = XposedHelpers.getObjectField(viewContainer, titleFieldName);
+            title = titleTmp instanceof TextView ? (TextView) titleTmp : null;
+        }
+        if (priceField != null) {
+            Object priceTmp = XposedHelpers.getObjectField(viewContainer, priceFieldName);
+            price = priceTmp instanceof TextView ? (TextView) priceTmp : null;
+        }
+        xpDialog(vh, viewContainer, image1, image2, title, price);
     }
 
     private void xpDialog(Object vh, Object viewContainer, View image, View image2, TextView title, TextView price) {
@@ -300,8 +343,6 @@ public class Yh {
             };
             if (image != null) image.setOnClickListener(l);
             if (image2 != null) image2.setOnClickListener(l);
-            longClick(vh, viewContainer, image);
-            longClick(vh, viewContainer, image2);
         }
     }
 
@@ -315,12 +356,10 @@ public class Yh {
                     @Override
                     public void onClick(DialogInterface dialog, int which) {
                         if (which == 0) {
-//                            setOnLongClickAllChildView()
                             setOnLongClickAllChildView(vh, viewContainer, (ViewGroup) v.getParent(), false);
                         } else if (which == 1) {
-//                            findAndShowAllViews
                             clearAllClickListener((ViewGroup) v.getParent());
-                            setOnLongClickAllChildView(vh, viewContainer, (ViewGroup) v.getParent(), true);
+                            Toast.makeText(v.getContext(), "设置完成", Toast.LENGTH_SHORT).show();
                         } else if (which == 2) {
                             showMessageDialog(view.getContext(), "vh", showAllMethod(vh));
                         } else {
@@ -370,7 +409,6 @@ public class Yh {
 
     private void dialogShowInfo(Context context, String message) {
         XposedBridge.log("SvranDialogShowInfo: " + message);
-//        Toast.makeText(context, message, Toast.LENGTH_SHORT).show();
         AlertDialog.Builder builder = new AlertDialog.Builder(context);
         builder.setTitle("插件: 怎么活啊 - 永辉 - 调试");
         builder.setMessage(message);
@@ -393,13 +431,15 @@ public class Yh {
         for (Method method : vh.getClass().getMethods()) {
             String rt = method.getReturnType().getName();
             int pts = method.getParameterTypes().length;
-            if (!Objects.equals(rt, "void") && pts == 0 && method.getName().length() <= 3) {
-                String logText = "Svran: name:" + method.getName() + " , 返回类型:" + rt + " , 参数个数: " + pts;
-                XposedBridge.log(logText);
-                sbd.append(logText).append('\n');
-            }
+//            if (!Objects.equals(rt, "void") && pts == 0 && method.getName().length() <= 3) {
+            String logText = "★名:" + method.getName() + " , 返:" + rt + " , 参(个): " + pts;
+            XposedBridge.log(logText);
+            sbd.append(logText).append('\n');
+//            }
         }
-        return sbd.toString();
+        String sbdText = sbd.toString();
+        XposedBridge.log("Svran: showAllMethod: " + sbdText);
+        return sbdText;
     }
 
     private String showAllField(Object viewContainer) {
@@ -411,12 +451,25 @@ public class Yh {
                 TextView textView = (TextView) f;
                 String txt = textView.getText().toString();
                 if (txt != null && !txt.isEmpty()) {
-                    String logText = "Svran: 字段: " + field.getName() + " , 获取字段值: " + txt;
+                    String logText = "★名: " + field.getName() + " , 文: " + txt;
                     XposedBridge.log(logText);
                     sbd.append(logText).append('\n');
                 }
+            } else if (f instanceof View) {
+                View view = (View) f;
+                if (view.isShown()) {
+                    String logText = "★名: " + field.getName() + " , " + (view.isShown() ? "显" : "隐") + "ID: " + getViewIdName(view) + "类: " + view.getClass().getName();
+                    XposedBridge.log(logText);
+                    sbd.append(logText).append('\n');
+                }
+            } else {
+                String logText = "★名: " + field.getName() + " , 值: " + f;
+                XposedBridge.log(logText);
+                sbd.append(logText).append('\n');
             }
         }
-        return sbd.toString();
+        String sbdText = sbd.toString();
+        XposedBridge.log("Svran: showAllField: " + sbdText);
+        return sbdText;
     }
 }
